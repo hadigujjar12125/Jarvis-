@@ -3,29 +3,32 @@
 
 import sys
 import argparse
+import logging
 from pathlib import Path
-from core.logger import Logger
-from core.config_manager import Config
-from core.memory_manager import MemoryManager
-from core.ai_brain import AIBrain
-from core.voice_assistant import VoiceAssistant
-from core.command_handler import CommandHandler
-from gui.gui import JARVSGUI
 
-logger = Logger.get(__name__)
+# Setup basic logging first
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+try:
+    from config import ASSISTANT_NAME, USER_NAME
+    from ai import AIAgent
+    from voice import listen, speak
+except ImportError as e:
+    logger.error(f"Failed to import required modules: {e}")
+    sys.exit(1)
 
 
 class JARVISApplication:
     """Main JARVIS Pro application."""
 
-    def __init__(self, use_gui: bool = True) -> None:
+    def __init__(self, use_gui: bool = False) -> None:
         self.use_gui = use_gui
-        self.memory = MemoryManager(Config.memory.db_path)
-        self.ai_brain = AIBrain()
-        self.voice = VoiceAssistant()
-        self.command_handler = CommandHandler()
-        self.gui = None
-        logger.info(f"JARVIS Pro initialized (GUI: {use_gui})")
+        self.ai_agent = AIAgent()
+        logger.info(f"JARVIS initialized (GUI: {use_gui})")
 
     def _process_input(self, user_input: str) -> str:
         """Process user input and return response."""
@@ -35,118 +38,75 @@ class JARVISApplication:
         command = user_input.strip()
         logger.info(f"Processing: {command}")
 
-        # Store in memory
-        self.memory.append_conversation("user", command)
-
-        # Try command handler first
-        handled, response = self.command_handler.handle(command)
-        if handled:
-            self.memory.append_conversation("assistant", response)
-            logger.info(f"Command handled: {response[:50]}")
-            return response
-
-        # Fall back to AI
         try:
-            response = self.ai_brain.ask(command)
-            self.memory.append_conversation("assistant", response)
-            logger.info(f"AI response: {response[:50]}")
+            response = self.ai_agent.ask(command)
+            logger.info(f"Response: {response[:50]}")
             return response
         except Exception as e:
-            logger.error(f"Error processing input: {e}")
+            logger.error(f"Error processing input: {e}", exc_info=True)
             error_msg = f"I encountered an error: {str(e)}"
-            self.memory.append_conversation("assistant", error_msg)
             return error_msg
-
-    def run_gui(self) -> None:
-        """Run GUI mode."""
-        logger.info("Starting GUI mode")
-        self.gui = JARVSGUI(on_submit=self._process_input)
-        
-        # Welcome message
-        welcome = f"Welcome {Config.user_name}! I'm {Config.assistant_name}."
-        self.gui._display_message(Config.assistant_name, welcome)
-        
-        try:
-            self.gui.run()
-        except Exception as e:
-            logger.error(f"GUI error: {e}")
-            self.run_cli()
 
     def run_cli(self) -> None:
         """Run CLI mode."""
         logger.info("Starting CLI mode")
-        print(f"\n{Config.assistant_name} Pro CLI")
-        print(f"Welcome {Config.user_name}!\n")
+        print(f"\n{ASSISTANT_NAME} Pro CLI")
+        print(f"Welcome {USER_NAME}!\n")
 
         while True:
             try:
                 user_input = input("You: ").strip()
                 
                 if user_input.lower() in {"exit", "quit", "bye"}:
-                    print(f"{Config.assistant_name}: Goodbye!")
-                    self.memory.append_conversation("assistant", "Goodbye!")
+                    print(f"{ASSISTANT_NAME}: Goodbye!")
                     break
 
                 if not user_input:
                     continue
 
                 response = self._process_input(user_input)
-                print(f"{Config.assistant_name}: {response}\n")
+                print(f"{ASSISTANT_NAME}: {response}\n")
 
             except KeyboardInterrupt:
-                print(f"\n{Config.assistant_name}: Goodbye!")
+                print(f"\n{ASSISTANT_NAME}: Goodbye!")
                 break
             except Exception as e:
-                logger.error(f"CLI error: {e}")
+                logger.error(f"CLI error: {e}", exc_info=True)
                 print(f"Error: {e}")
 
     def run_voice(self) -> None:
         """Run voice mode."""
         logger.info("Starting voice mode")
-        print(f"{Config.assistant_name} Voice Mode")
-        print(f"Say '{Config.voice.wake_word}' to start\n")
+        print(f"{ASSISTANT_NAME} Voice Mode")
+        print("Say something to start\n")
 
         while True:
             try:
                 # Listen for input
-                user_input = self.voice.listen()
+                user_input = listen()
                 if not user_input:
-                    continue
-
-                # Check for wake word
-                if Config.voice.enable_wake_word:
-                    if Config.voice.wake_word.lower() not in user_input.lower():
-                        continue
-                    # Remove wake word
-                    user_input = user_input.lower().replace(
-                        Config.voice.wake_word.lower(), ""
-                    ).strip()
-
-                if not user_input:
-                    self.voice.speak("Yes?")
                     continue
 
                 if user_input.lower() in {"exit", "quit", "bye"}:
-                    self.voice.speak(f"Goodbye {Config.user_name}!")
+                    speak(f"Goodbye {USER_NAME}!")
                     break
 
                 # Process and respond
                 response = self._process_input(user_input)
-                self.voice.speak(response)
+                speak(response)
 
             except KeyboardInterrupt:
-                self.voice.speak("Goodbye!")
+                speak("Goodbye!")
                 break
             except Exception as e:
-                logger.error(f"Voice mode error: {e}")
-                self.voice.speak(f"Error: {str(e)}")
+                logger.error(f"Voice mode error: {e}", exc_info=True)
+                speak(f"Error occurred")
 
     def run(self) -> None:
         """Run application."""
-        Config.ensure_dirs()
-        
         if self.use_gui:
-            self.run_gui()
+            logger.warning("GUI mode not yet implemented, falling back to CLI")
+            self.run_cli()
         else:
             self.run_cli()
 
@@ -158,18 +118,12 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python main.py              # Run GUI mode
-  python main.py --cli        # Run CLI mode
+  python main.py              # Run CLI mode
   python main.py --voice      # Run voice mode
   python main.py --debug      # Run with debug logging
         """
     )
     
-    parser.add_argument(
-        "--cli",
-        action="store_true",
-        help="Run in CLI mode instead of GUI"
-    )
     parser.add_argument(
         "--voice",
         action="store_true",
@@ -185,20 +139,18 @@ Examples:
     
     try:
         if args.debug:
-            Config.debug_mode = True
+            logging.getLogger().setLevel(logging.DEBUG)
             logger.info("Debug mode enabled")
         
-        app = JARVISApplication(use_gui=not args.cli and not args.voice)
+        app = JARVISApplication(use_gui=False)
         
         if args.voice:
             app.run_voice()
-        elif args.cli:
-            app.run_cli()
         else:
-            app.run_gui()
+            app.run_cli()
     
     except Exception as e:
-        logger.error(f"Fatal error: {e}")
+        logger.error(f"Fatal error: {e}", exc_info=True)
         print(f"Fatal error: {e}")
         sys.exit(1)
 
