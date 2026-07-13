@@ -1,228 +1,210 @@
-"""Modern GUI for JARVIS with dark theme and animated orb."""
+"""GUI interface for JARVIS Pro."""
 
+import logging
 import tkinter as tk
-from tkinter import scrolledtext, messagebox
+from tkinter import scrolledtext, messagebox, ttk
+from datetime import datetime
 import threading
-from typing import Callable, Optional
-from core.logger import Logger
-from core.config_manager import Config
 
-logger = Logger.get(__name__)
-
-try:
-    import customtkinter as ctk
-    ctk.set_appearance_mode("dark")
-    ctk.set_default_color_theme("blue")
-except ImportError:
-    ctk = None
+logger = logging.getLogger(__name__)
 
 
-class JARVSGUI:
-    """Modern dark-themed GUI application."""
+class JARVISGui:
+    """Modern GUI interface for JARVIS Pro."""
 
-    def __init__(self, on_submit: Callable[[str], str]) -> None:
+    def __init__(self, on_submit=None):
+        """Initialize GUI."""
         self.on_submit = on_submit
-        self.root = None
-        self.chat_display = None
-        self.input_field = None
-        self.send_button = None
-        self.is_running = False
-        self._init_gui()
-
-    def _init_gui(self) -> None:
-        """Initialize GUI components."""
-        if ctk:
-            self._init_custom_tkinter()
-        else:
-            self._init_standard_tkinter()
-
-    def _init_custom_tkinter(self) -> None:
-        """Initialize with customtkinter for modern look."""
-        self.root = ctk.CTk()
-        self.root.title(f"{Config.assistant_name} - Pro Assistant")
-        self.root.geometry("800x600")
-        self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
-
-        # Main frame
-        main_frame = ctk.CTkFrame(self.root, fg_color="#1a1a2e")
-        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
-
-        # Title
-        title = ctk.CTkLabel(
-            main_frame,
-            text=f"{Config.assistant_name} Pro",
-            font=("Arial", 24, "bold"),
-            text_color="#00d4ff"
-        )
-        title.pack(pady=10)
-
-        # Chat display
-        chat_frame = ctk.CTkFrame(main_frame)
-        chat_frame.pack(fill="both", expand=True, pady=10)
-
-        self.chat_display = scrolledtext.ScrolledText(
-            chat_frame,
-            wrap=tk.WORD,
-            bg="#0f0f1e",
-            fg="#ffffff",
-            font=("Courier", 10),
-            height=20
-        )
-        self.chat_display.pack(fill="both", expand=True)
-        self.chat_display.config(state="disabled")
-
-        # Input frame
-        input_frame = ctk.CTkFrame(main_frame)
-        input_frame.pack(fill="x", pady=10)
-
-        self.input_field = ctk.CTkEntry(
-            input_frame,
-            placeholder_text="Type your message...",
-            text_color="#ffffff",
-            fg_color="#16213e",
-            border_color="#00d4ff",
-            border_width=2
-        )
-        self.input_field.pack(side="left", fill="x", expand=True, padx=(0, 10))
-        self.input_field.bind("<Return>", lambda e: self._handle_send())
-
-        self.send_button = ctk.CTkButton(
-            input_frame,
-            text="Send",
-            command=self._handle_send,
-            fg_color="#00d4ff",
-            text_color="#000000",
-            width=100
-        )
-        self.send_button.pack(side="right")
-
-        # Status bar
-        self.status_label = ctk.CTkLabel(
-            main_frame,
-            text="Ready",
-            text_color="#00d4ff",
-            font=("Arial", 9)
-        )
-        self.status_label.pack(pady=5)
-
-    def _init_standard_tkinter(self) -> None:
-        """Initialize with standard tkinter."""
         self.root = tk.Tk()
-        self.root.title(f"{Config.assistant_name} - Pro Assistant")
-        self.root.geometry("800x600")
-        self.root.configure(bg="#1a1a2e")
+        self.root.title("JARVIS Pro - AI Assistant")
+        self.root.geometry("900x700")
+        
+        # Set dark theme colors
+        self.bg_color = "#1e1e1e"
+        self.fg_color = "#ffffff"
+        self.accent_color = "#0078d4"
+        self.secondary_bg = "#2d2d2d"
+        
+        self.root.configure(bg=self.bg_color)
+        
+        self._setup_ui()
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
 
-        # Title
-        title = tk.Label(
-            self.root,
-            text=f"{Config.assistant_name} Pro",
-            font=("Arial", 24, "bold"),
-            bg="#1a1a2e",
-            fg="#00d4ff"
+    def _setup_ui(self):
+        """Setup user interface."""
+        # Header
+        header_frame = tk.Frame(self.root, bg=self.accent_color, height=60)
+        header_frame.pack(fill=tk.X, padx=0, pady=0)
+        header_frame.pack_propagate(False)
+        
+        header_label = tk.Label(
+            header_frame,
+            text="🤖 JARVIS Pro - AI Assistant",
+            font=("Arial", 18, "bold"),
+            bg=self.accent_color,
+            fg=self.fg_color
         )
-        title.pack(pady=10)
-
+        header_label.pack(pady=10)
+        
+        # Main content frame
+        main_frame = tk.Frame(self.root, bg=self.bg_color)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
         # Chat display
-        self.chat_display = scrolledtext.ScrolledText(
-            self.root,
-            wrap=tk.WORD,
-            bg="#0f0f1e",
-            fg="#ffffff",
-            font=("Courier", 10),
-            height=20
+        chat_label = tk.Label(
+            main_frame,
+            text="Chat History",
+            font=("Arial", 12, "bold"),
+            bg=self.bg_color,
+            fg=self.fg_color
         )
-        self.chat_display.pack(fill="both", expand=True, padx=10, pady=10)
-        self.chat_display.config(state="disabled")
-
+        chat_label.pack(anchor="w", pady=(0, 5))
+        
+        self.chat_display = scrolledtext.ScrolledText(
+            main_frame,
+            height=20,
+            bg=self.secondary_bg,
+            fg=self.fg_color,
+            font=("Arial", 10),
+            wrap=tk.WORD,
+            state=tk.DISABLED
+        )
+        self.chat_display.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        # Configure text tags for styling
+        self.chat_display.tag_config("user", foreground="#4fc3f7")
+        self.chat_display.tag_config("assistant", foreground="#81c784")
+        self.chat_display.tag_config("error", foreground="#ff6b6b")
+        self.chat_display.tag_config("timestamp", foreground="#999999")
+        
         # Input frame
-        input_frame = tk.Frame(self.root, bg="#1a1a2e")
-        input_frame.pack(fill="x", padx=10, pady=10)
-
+        input_frame = tk.Frame(main_frame, bg=self.bg_color)
+        input_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        input_label = tk.Label(
+            input_frame,
+            text="Your Message",
+            font=("Arial", 10, "bold"),
+            bg=self.bg_color,
+            fg=self.fg_color
+        )
+        input_label.pack(anchor="w", pady=(0, 5))
+        
         self.input_field = tk.Entry(
             input_frame,
-            bg="#16213e",
-            fg="#ffffff",
-            font=("Arial", 10),
-            insertbackground="#00d4ff"
+            font=("Arial", 11),
+            bg=self.secondary_bg,
+            fg=self.fg_color,
+            insertbackground=self.fg_color
         )
-        self.input_field.pack(side="left", fill="x", expand=True, padx=(0, 10))
-        self.input_field.bind("<Return>", lambda e: self._handle_send())
-
-        self.send_button = tk.Button(
-            input_frame,
-            text="Send",
-            command=self._handle_send,
-            bg="#00d4ff",
-            fg="#000000",
-            font=("Arial", 10),
-            width=10
+        self.input_field.pack(fill=tk.X, pady=(0, 8))
+        self.input_field.bind("<Return>", lambda e: self._send_message())
+        
+        # Buttons frame
+        button_frame = tk.Frame(input_frame, bg=self.bg_color)
+        button_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        send_btn = tk.Button(
+            button_frame,
+            text="📤 Send",
+            command=self._send_message,
+            bg=self.accent_color,
+            fg=self.fg_color,
+            font=("Arial", 10, "bold"),
+            relief=tk.FLAT,
+            padx=20,
+            pady=8,
+            cursor="hand2"
         )
-        self.send_button.pack(side="right")
-
+        send_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        clear_btn = tk.Button(
+            button_frame,
+            text="🗑️ Clear",
+            command=self._clear_chat,
+            bg=self.secondary_bg,
+            fg=self.fg_color,
+            font=("Arial", 10),
+            relief=tk.FLAT,
+            padx=20,
+            pady=8,
+            cursor="hand2",
+            activebackground="#404040"
+        )
+        clear_btn.pack(side=tk.LEFT, padx=2)
+        
         # Status bar
-        self.status_label = tk.Label(
+        self.status_var = tk.StringVar(value="Ready")
+        status_bar = tk.Label(
             self.root,
-            text="Ready",
-            bg="#1a1a2e",
-            fg="#00d4ff",
-            font=("Arial", 9)
+            textvariable=self.status_var,
+            bg=self.secondary_bg,
+            fg="#999999",
+            font=("Arial", 9),
+            relief=tk.SUNKEN,
+            anchor="w"
         )
-        self.status_label.pack(pady=5)
+        status_bar.pack(fill=tk.X, padx=0, pady=0)
 
-    def _handle_send(self) -> None:
-        """Handle message submission."""
-        user_input = self.input_field.get().strip()
-        if not user_input:
+    def _send_message(self):
+        """Send user message and get response."""
+        message = self.input_field.get().strip()
+        
+        if not message:
+            messagebox.showwarning("Empty Message", "Please type something!")
             return
-
+        
+        # Display user message
+        self._display_message("You", message, "user")
         self.input_field.delete(0, tk.END)
-        self._display_message("You", user_input)
-
-        # Process in thread to avoid GUI freezing
-        thread = threading.Thread(target=self._process_message, args=(user_input,))
+        self.status_var.set("Processing...")
+        
+        # Process message in separate thread
+        thread = threading.Thread(target=self._process_message, args=(message,))
         thread.daemon = True
         thread.start()
 
-    def _process_message(self, message: str) -> None:
-        """Process user message."""
+    def _process_message(self, message):
+        """Process message and get response."""
         try:
-            self._update_status("Processing...")
-            response = self.on_submit(message)
-            self._display_message(Config.assistant_name, response)
-            self._update_status("Ready")
+            if self.on_submit:
+                response = self.on_submit(message)
+                self._display_message("JARVIS", response, "assistant")
+                self.status_var.set("Ready")
+            else:
+                self._display_message("JARVIS", "No handler connected!", "error")
+                self.status_var.set("Error")
         except Exception as e:
-            logger.error(f"Error processing message: {e}")
-            self._display_message("Error", str(e))
-            self._update_status("Error")
+            logger.error(f"Error processing message: {e}", exc_info=True)
+            self._display_message("JARVIS", f"Error: {str(e)}", "error")
+            self.status_var.set("Error")
 
-    def _display_message(self, sender: str, message: str) -> None:
-        """Display a message in chat."""
-        self.chat_display.config(state="normal")
-        self.chat_display.insert(tk.END, f"\n{sender}: {message}\n")
+    def _display_message(self, sender, message, tag="assistant"):
+        """Display message in chat."""
+        self.chat_display.config(state=tk.NORMAL)
+        
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.chat_display.insert(tk.END, f"[{timestamp}] ", "timestamp")
+        self.chat_display.insert(tk.END, f"{sender}: ", tag)
+        self.chat_display.insert(tk.END, f"{message}\n\n")
+        
+        self.chat_display.config(state=tk.DISABLED)
         self.chat_display.see(tk.END)
-        self.chat_display.config(state="disabled")
 
-    def _update_status(self, status: str) -> None:
-        """Update status bar."""
-        if self.status_label:
-            self.status_label.config(text=status)
+    def _clear_chat(self):
+        """Clear chat history."""
+        if messagebox.askyesno("Clear Chat", "Clear all messages?"):
+            self.chat_display.config(state=tk.NORMAL)
+            self.chat_display.delete(1.0, tk.END)
+            self.chat_display.config(state=tk.DISABLED)
+            self.status_var.set("Chat cleared")
 
-    def _on_closing(self) -> None:
+    def _on_closing(self):
         """Handle window closing."""
-        if messagebox.askokcancel("Quit", "Do you want to quit?"):
-            self.is_running = False
-            if self.root:
-                self.root.destroy()
-
-    def run(self) -> None:
-        """Start the GUI."""
-        if self.root:
-            self.is_running = True
-            self.root.mainloop()
-
-    def stop(self) -> None:
-        """Stop the GUI."""
-        self.is_running = False
-        if self.root:
+        if messagebox.askokcancel("Quit", "Exit JARVIS Pro?"):
             self.root.destroy()
+
+    def run(self):
+        """Start GUI."""
+        logger.info("Starting GUI")
+        self.root.mainloop()

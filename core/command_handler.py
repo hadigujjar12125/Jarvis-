@@ -1,190 +1,190 @@
-"""Enhanced command handler for system operations."""
+"""Command handler for JARVIS Pro."""
 
+import logging
 import re
-import os
-import platform
-import subprocess
-from typing import Tuple, Optional
-from core.logger import Logger
-from core.config_manager import Config
+from typing import Tuple
+from automation.pc_control import PCControl
 
-logger = Logger.get(__name__)
-
-try:
-    import psutil
-except ImportError:
-    psutil = None
-
-try:
-    import pyautogui
-except ImportError:
-    pyautogui = None
-
-try:
-    import pyperclip
-except ImportError:
-    pyperclip = None
+logger = logging.getLogger(__name__)
 
 
 class CommandHandler:
-    """Handles system commands with safety checks."""
+    """Handle system commands and PC control."""
 
-    def __init__(self) -> None:
-        self.allowlist = Config.command.allowlist
-        self.denylist = Config.command.denylist
+    def __init__(self):
+        """Initialize command handler."""
+        self.pc_control = PCControl()
+        self.commands = {
+            # System commands
+            r'(shutdown|power off|turn off)': self.handle_shutdown,
+            r'(restart|reboot)': self.handle_restart,
+            r'(sleep|sleep mode)': self.handle_sleep,
+            r'(lock|lock computer)': self.handle_lock,
+            
+            # Info commands
+            r'(system info|system information|computer info)': self.handle_system_info,
+            r'(cpu usage|cpu load)': self.handle_cpu_usage,
+            r'(memory usage|ram usage)': self.handle_memory_usage,
+            r'(disk usage|storage usage)': self.handle_disk_usage,
+            r'(network status|internet status)': self.handle_network_status,
+            
+            # Application commands
+            r'(open|launch|start)\s+(.+)': self.handle_open_app,
+            r'(close|quit|kill)\s+(.+)': self.handle_close_app,
+            r'(list apps|running apps|what apps)': self.handle_list_apps,
+            
+            # Volume commands
+            r'(mute|silence)': self.handle_mute,
+            r'(unmute|sound on)': self.handle_unmute,
+            r'(volume|set volume)\s*(\d+)': self.handle_set_volume,
+            
+            # File operations
+            r'(open file)\s+(.+)': self.handle_open_file,
+            r'(open folder|open directory)\s+(.+)': self.handle_open_folder,
+        }
+        logger.info("Command handler initialized")
 
-    def _is_allowed(self, command: str) -> Tuple[bool, str]:
-        """Check if command is allowed."""
-        lc = command.lower()
+    def handle(self, user_input: str) -> Tuple[bool, str]:
+        """Handle user input as command.
         
-        # Check denylist
-        for denied in self.denylist:
-            if denied.lower() in lc:
-                return False, f"Command contains denied pattern: '{denied}'"
+        Args:
+            user_input: User input string
+            
+        Returns:
+            Tuple of (handled, response)
+        """
+        user_input_lower = user_input.lower().strip()
         
-        # Check allowlist if present
-        if self.allowlist:
-            for allowed in self.allowlist:
-                if allowed.lower() in lc:
-                    return True, ""
-            return False, "Command not in allowlist"
+        for pattern, handler in self.commands.items():
+            match = re.search(pattern, user_input_lower, re.IGNORECASE)
+            if match:
+                try:
+                    response = handler(user_input, match)
+                    logger.info(f"Command handled: {pattern}")
+                    return True, response
+                except Exception as e:
+                    logger.error(f"Error handling command: {e}", exc_info=True)
+                    return True, f"Error executing command: {str(e)}"
         
-        return True, ""
-
-    def handle(self, command: str) -> Tuple[bool, str]:
-        """Process system command."""
-        if not command or not command.strip():
-            return True, "No command provided."
-
-        # Safety check
-        allowed, reason = self._is_allowed(command)
-        if not allowed:
-            logger.warning(f"Command blocked: {reason}")
-            return True, f"Command blocked: {reason}"
-
-        c = command.strip()
-        lc = c.lower()
-
-        # Open application
-        if re.match(r"open\s+(app\s+)?(.+)", lc):
-            app = re.match(r"open\s+(?:app\s+)?(.+)", lc).group(1)
-            return self._open_app(app)
-
-        # Open URL
-        if re.match(r"(?:open|visit|go to)\s+(.+)", lc):
-            url = re.match(r"(?:open|visit|go to)\s+(.+)", lc).group(1)
-            return self._open_url(url)
-
-        # System info
-        if "system info" in lc or "system information" in lc:
-            return self._system_info()
-
-        # Battery status
-        if "battery" in lc:
-            return self._battery_status()
-
-        # Clipboard operations
-        if "copy" in lc:
-            text = re.sub(r"copy\s+", "", lc)
-            return self._copy_to_clipboard(text)
-
-        if "paste" in lc:
-            return self._paste_from_clipboard()
-
-        # No command matched
         return False, ""
 
-    def _open_app(self, app_name: str) -> Tuple[bool, str]:
-        """Open an application."""
-        try:
-            if os.path.exists(app_name):
-                if platform.system() == "Windows":
-                    os.startfile(app_name)
-                elif platform.system() == "Darwin":
-                    subprocess.Popen(["open", app_name])
-                else:
-                    subprocess.Popen(["xdg-open", app_name])
-                return True, f"Opened {app_name}"
-            else:
-                proc = subprocess.Popen(
-                    app_name.split(),
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
-                )
-                return True, f"Started {app_name} (PID: {proc.pid})"
-        except Exception as e:
-            logger.error(f"Failed to open app: {e}")
-            return True, f"Failed to open {app_name}: {str(e)}"
+    # ============ System Commands ============
 
-    def _open_url(self, url: str) -> Tuple[bool, str]:
-        """Open a URL in default browser."""
-        try:
-            if not url.startswith(("http://", "https://", "www.")):
-                url = f"https://{url}"
-            
-            if platform.system() == "Windows":
-                os.startfile(url)
-            elif platform.system() == "Darwin":
-                subprocess.Popen(["open", url])
-            else:
-                subprocess.Popen(["xdg-open", url])
-            
-            return True, f"Opening {url}"
-        except Exception as e:
-            logger.error(f"Failed to open URL: {e}")
-            return True, f"Failed to open URL: {str(e)}"
+    def handle_shutdown(self, user_input: str, match) -> str:
+        """Handle shutdown command."""
+        success, message = self.pc_control.shutdown()
+        return message
 
-    def _system_info(self) -> Tuple[bool, str]:
-        """Get system information."""
-        try:
-            if not psutil:
-                return True, "psutil not installed"
-            
-            cpu = psutil.cpu_percent(interval=1)
-            memory = psutil.virtual_memory()
-            disk = psutil.disk_usage("/")
-            
-            info = f"CPU: {cpu}% | Memory: {memory.percent}% | Disk: {disk.percent}%"
-            return True, info
-        except Exception as e:
-            logger.error(f"Failed to get system info: {e}")
-            return True, f"Error getting system info: {str(e)}"
+    def handle_restart(self, user_input: str, match) -> str:
+        """Handle restart command."""
+        success, message = self.pc_control.restart()
+        return message
 
-    def _battery_status(self) -> Tuple[bool, str]:
-        """Get battery status."""
-        try:
-            if not psutil:
-                return True, "psutil not installed"
-            
-            battery = psutil.sensors_battery()
-            if battery:
-                status = "charging" if battery.power_plugged else "discharging"
-                return True, f"Battery: {battery.percent}% ({status})"
-            return True, "No battery information available"
-        except Exception as e:
-            logger.error(f"Failed to get battery status: {e}")
-            return True, f"Error getting battery status: {str(e)}"
+    def handle_sleep(self, user_input: str, match) -> str:
+        """Handle sleep command."""
+        success, message = self.pc_control.sleep()
+        return message
 
-    def _copy_to_clipboard(self, text: str) -> Tuple[bool, str]:
-        """Copy text to clipboard."""
-        try:
-            if not pyperclip:
-                return True, "pyperclip not installed"
-            
-            pyperclip.copy(text)
-            return True, f"Copied to clipboard: {text[:50]}"
-        except Exception as e:
-            logger.error(f"Failed to copy to clipboard: {e}")
-            return True, f"Error copying to clipboard: {str(e)}"
+    def handle_lock(self, user_input: str, match) -> str:
+        """Handle lock command."""
+        success, message = self.pc_control.lock()
+        return message
 
-    def _paste_from_clipboard(self) -> Tuple[bool, str]:
-        """Paste from clipboard."""
-        try:
-            if not pyperclip:
-                return True, "pyperclip not installed"
-            
-            content = pyperclip.paste()
-            return True, f"Clipboard: {content[:100]}"
-        except Exception as e:
-            logger.error(f"Failed to paste from clipboard: {e}")
-            return True, f"Error pasting from clipboard: {str(e)}"
+    # ============ Info Commands ============
+
+    def handle_system_info(self, user_input: str, match) -> str:
+        """Handle system info command."""
+        info = self.pc_control.get_system_info()
+        
+        if "error" in info:
+            return f"Error: {info['error']}"
+        
+        return (f"System: {info.get('os', 'N/A')} {info.get('os_version', 'N/A')}\n"
+                f"Processor: {info.get('processor', 'N/A')}\n"
+                f"CPU Usage: {info.get('cpu_percent', 0)}%\n"
+                f"Memory: {info.get('memory_percent', 0)}%\n"
+                f"Disk: {info.get('disk_percent', 0)}%")
+
+    def handle_cpu_usage(self, user_input: str, match) -> str:
+        """Handle CPU usage command."""
+        return self.pc_control.get_cpu_usage()
+
+    def handle_memory_usage(self, user_input: str, match) -> str:
+        """Handle memory usage command."""
+        return self.pc_control.get_memory_usage()
+
+    def handle_disk_usage(self, user_input: str, match) -> str:
+        """Handle disk usage command."""
+        return self.pc_control.get_disk_usage()
+
+    def handle_network_status(self, user_input: str, match) -> str:
+        """Handle network status command."""
+        connected = self.pc_control.is_internet_connected()
+        status = self.pc_control.get_network_status()
+        return f"{status}\nInternet: {'Connected' if connected else 'Disconnected'}"
+
+    # ============ Application Commands ============
+
+    def handle_open_app(self, user_input: str, match) -> str:
+        """Handle open application command."""
+        app_name = match.group(2) if match.lastindex >= 2 else ""
+        
+        if not app_name:
+            return "Please specify an application name."
+        
+        success, message = self.pc_control.open_application(app_name)
+        return message
+
+    def handle_close_app(self, user_input: str, match) -> str:
+        """Handle close application command."""
+        app_name = match.group(2) if match.lastindex >= 2 else ""
+        
+        if not app_name:
+            return "Please specify an application name."
+        
+        success, message = self.pc_control.close_application(app_name)
+        return message
+
+    def handle_list_apps(self, user_input: str, match) -> str:
+        """Handle list apps command."""
+        return self.pc_control.list_running_apps()
+
+    # ============ Volume Commands ============
+
+    def handle_mute(self, user_input: str, match) -> str:
+        """Handle mute command."""
+        success, message = self.pc_control.mute()
+        return message
+
+    def handle_unmute(self, user_input: str, match) -> str:
+        """Handle unmute command."""
+        success, message = self.pc_control.unmute()
+        return message
+
+    def handle_set_volume(self, user_input: str, match) -> str:
+        """Handle set volume command."""
+        level = int(match.group(2)) if match.lastindex >= 2 else 50
+        success, message = self.pc_control.set_volume(level)
+        return message
+
+    # ============ File Operations ============
+
+    def handle_open_file(self, user_input: str, match) -> str:
+        """Handle open file command."""
+        file_path = match.group(2) if match.lastindex >= 2 else ""
+        
+        if not file_path:
+            return "Please specify a file path."
+        
+        success, message = self.pc_control.open_file(file_path)
+        return message
+
+    def handle_open_folder(self, user_input: str, match) -> str:
+        """Handle open folder command."""
+        folder_path = match.group(2) if match.lastindex >= 2 else ""
+        
+        if not folder_path:
+            return "Please specify a folder path."
+        
+        success, message = self.pc_control.open_folder(folder_path)
+        return message

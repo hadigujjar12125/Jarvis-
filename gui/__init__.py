@@ -1,5 +1,1 @@
-"""GUI module for JARVIS."""
-
-from gui.gui import JARVSGUI
-
-__all__ = ['JARVSGUI']
+"""GUI modules for JARVIS Pro."""
